@@ -13,3 +13,7 @@ A repo for demoing how to use the [FSharp.Data.SqlClient](https://fsprojects.git
 * [FSharp.Data.SqlClient](https://fsprojects.github.io/FSharp.Data.SqlClient/)
 * My FSharp Advent calendar post introduction Type Providers.
    * [link]()
+
+# Feedback
+
+If you have any questions or suggestions, don't hesitate to open an issue or a PR. 
