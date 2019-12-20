@@ -1,34 +1,43 @@
 ﻿open FSharp.Data
 open System
+open System.Data.SqlClient
+
+//[<Literal>]
+//let connectionString = 
+//    "Server=localhost;Database=AdventureWorksLT2017;Trusted_Connection=True;"
 
 [<Literal>]
 let connectionString = 
-    "Server=localhost;Database=AdventureWorksLT2017;Trusted_Connection=True;"
-
-[<Literal>]
-let connectionString2 = 
     "Server=localhost;Database=AdventureWorks2017;Trusted_Connection=True;"
     
 
-type AdventureWorks2017 = SqlProgrammabilityProvider<connectionString2>
+type AdventureWorks2017 = SqlProgrammabilityProvider<connectionString>
+
 
 type Product =
-    {
-        Name : string
-        ProductNumber : string
-        Color : string
-        StandardCost : decimal
-        ListPrice : decimal
-        Size : string
-        Weight : decimal
-        ProductCategoryID : int
-        ProductModelID : int
-        SellStartDate : DateTime
-        SellEndDate : DateTime
-        DiscontinuedDate : DateTime
-        Rowguid : Guid
-        ModifiedDate : DateTime
-    }
+ {
+     Name : string
+     ProductNumber : string
+     MakeFlag : Boolean
+     FinishedGoodsFlag : Boolean
+     Color : string
+     SafetyStockLevel : int16
+     ReorderPoint : int16
+     StandardCost : decimal
+     ListPrice : decimal
+     DaysToManufacture : int
+     SellStartDate : DateTime
+     Rowguid : Guid
+     ModifiedDate : DateTime
+ }
+
+ 
+type NewDepartment = 
+ {
+     Name : string
+     GroupName : string
+     ModifiedDate : DateTime option
+ }
 
 let getProducts () = 
     let cmd = new SqlCommandProvider<"
@@ -36,7 +45,7 @@ let getProducts () =
         [ProductID]
         ,[Name]
         ,[Color]
-        FROM [SalesLT].[Product]" , connectionString>(connectionString)
+        FROM [Production].[Product]" , connectionString>(connectionString)
     
     cmd.Execute()
 
@@ -46,28 +55,25 @@ let getRedProducts (color) =
         [ProductID]
         ,[Name]
         ,[Color]
-        FROM [SalesLT].[Product]
+        FROM [Production].[Product]
         WHERE Color = @color", connectionString>(connectionString)
 
     cmd.Execute(color)
 
+ 
 let insertProduct (product : Product) =
     let cmd = new SqlCommandProvider<"
-    INSERT INTO [SalesLT].[Product] 
-        (Name, ProductNumber, Color, StandardCost, 
-        ListPrice, Size, Weight, ProductCategoryID, ProductModelID, SellStartDate, 
-        SellEndDate, DiscontinuedDate, rowguid, ModifiedDate)
-    VALUES (@Name, @ProductNumber, @Color, @StandardCost, @ListPrice, @Size, 
-        @Weight, @ProductCategoryID, @ProductModelID, @SellStartDate, @SellEndDate,
-        @DistinuedDate, @rowguid, @ModifiedDate)", connectionString>(connectionString)
+    INSERT INTO [Production].[Product] 
+        (Name, ProductNumber, MakeFlag, FinishedGoodsFlag, Color, SafetyStockLevel, ReorderPoint, StandardCost, ListPrice, DaysToManufacture, SellStartDate, rowguid, ModifiedDate)
+    VALUES (@Name, @ProductNumber, @MakeFlag, @FinishedGoodsFlag, @Color, @SafetyStockLevel, @ReorderPoint, @StandardCost, @ListPrice, @DaysToManufacture, @SellStartDate, @rowguid, @ModifiedDate)", connectionString>(connectionString)
 
-    cmd.Execute(product.Name, product.ProductNumber, product.Color, product.StandardCost, product.ListPrice, 
-        product.Size, product.Weight, product.ProductCategoryID, product.ProductModelID, product.SellStartDate, 
-        product.SellEndDate, product.DiscontinuedDate, product.Rowguid, product.ModifiedDate)
+    cmd.Execute(product.Name, product.ProductNumber, product.MakeFlag, product.FinishedGoodsFlag, product.Color, 
+        product.SafetyStockLevel, product.ReorderPoint, product.StandardCost, product.ListPrice, product.DaysToManufacture,
+        product.SellStartDate, product.Rowguid, product.ModifiedDate)
 
 let deleteProduct (productNumber) =
     let cmd = new SqlCommandProvider<"
-        DELETE FROM [SalesLT].[Product]
+        DELETE FROM [Production].[Product]
         WHERE ProductNumber = @ProductNumber", connectionString>(connectionString)
 
     cmd.Execute(productNumber)
@@ -75,29 +81,56 @@ let deleteProduct (productNumber) =
 //Make sure you return a list or array
 //https://github.com/fsprojects/FSharp.Data.SqlClient/issues/321
 let getEmployeeManagers (businesEntityID : int) =
-    use cmd = new AdventureWorks2017.dbo.uspGetEmployeeManagers(connectionString2)
+    use cmd = new AdventureWorks2017.dbo.uspGetEmployeeManagers(connectionString)
     cmd.Execute(businesEntityID) |> Seq.toList
+
+let insertDepartment(newDepartment) =
+    use table = new AdventureWorks2017.HumanResources.Tables.Department()
+    use conn = new SqlConnection(connectionString)
+    conn.Open()
+    table.AddRow(newDepartment.Name, newDepartment.GroupName, newDepartment.ModifiedDate)
+    table.Update(conn)
+
+
+
+type PhoneNumberType = 
+    SqlEnumProvider<"SELECT Name, PhoneNumberTypeID FROM Person.PhoneNumberType ORDER BY PhoneNumberTypeID", connectionString>
+
+let selectAllCellPhones() =
+    let cmd = new SqlCommandProvider<"SELECT * FROM Person.PersonPhone 
+        WHERE PhoneNumberTypeID = @phoneNumberType", connectionString>(connectionString)
+
+    cmd.Execute(PhoneNumberType.Cell)
+
 [<EntryPoint>]
 let main argv =
+    //basic select
     let records = getProducts()
     records |> printfn "%A"
-    let product722 = records |> Seq.filter (fun x -> x.ProductID = 722)
-    printfn "record 722 %A" product722
     
+    //select with parameter
     let redRecords = getRedProducts("Red")
     redRecords |> printfn "%A"
     Seq.length redRecords |> printfn "number of red records %d"
     
-    let newProduct = { Name = "Touring Double Rear Wheel"; ProductNumber = "RW-T905a"; Color = "Red"; 
-        StandardCost = 200.82m; ListPrice = 400.1m; Size = "40"; Weight = 1200.44m; ProductCategoryID = 21; 
-        ProductModelID = 14; SellStartDate = DateTime.UtcNow; SellEndDate = DateTime.MaxValue; 
-        DiscontinuedDate = DateTime.MaxValue; Rowguid = Guid.NewGuid(); ModifiedDate = DateTime.UtcNow }
+    //insert
+    let newProduct = { Name = "Touring Double Rear Wheel"; ProductNumber = "RW-T905a"; MakeFlag = true; 
+        FinishedGoodsFlag = true; Color = "Red"; SafetyStockLevel = 1s; ReorderPoint = 5s; StandardCost = 200.82m; 
+        ListPrice = 400.1m; DaysToManufacture = 20; SellStartDate = DateTime.UtcNow;  Rowguid = Guid.NewGuid();
+        ModifiedDate = DateTime.UtcNow }
     let insertedCount = insertProduct(newProduct)
     printfn "Products inserted: %i" insertedCount
 
+    //delete
     let deletedCount = deleteProduct("RW-T905a")
     printfn "Products deleted: %i" deletedCount
 
+    //get via SqlProgrammabilityProvider
     let employeeManagers = getEmployeeManagers(120)
     printfn "Employee Managers: %A" employeeManagers
+
+    //insert via SqlProgrammabilityProvider
+    let newDepartment = { Name = "DepartmentName"; GroupName = "GroupName"; ModifiedDate = Some DateTime.UtcNow }
+    let recordsInserted = insertDepartment(newDepartment)
+    printfn "Inserted %i department" recordsInserted
     0
